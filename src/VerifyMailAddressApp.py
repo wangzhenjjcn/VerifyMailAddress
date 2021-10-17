@@ -291,7 +291,7 @@ class MailVerifier():
         return
 
     def saveDataFile(self):
-        self.dataTargetFile=self.dataResourceFile+"-resault-utf-8.csv"
+        self.dataTargetFile=self.dataResourceFile+"-resault.csv"
         self.data2save=""
         currentId=0
         firstLineData="Id,Mail_Address,Address_Check,MX_Check,Validate_Check,ErrMSG"
@@ -322,13 +322,15 @@ class MailVerifier():
             dataline="%s,%s,%s,%s,%s,%s"%(str(currentId),address.replace(",","，"),addresscheckmsg.replace(",","，"),mxcheckmsg.replace(",","，"),validatecheckmsg.replace(",","，"),errmsg.replace(",","，"))
             # print(dataline)
             self.data2save=self.data2save+dataline+os.linesep
-        self.data2save=self.data2save.replace(os.linesep+os.linesep,os.linesep).replace("\r\r","\r").replace("\n\n","\n")        
+        self.data2save=self.data2save.replace("\r\r\n",+os.linesep)
+        self.data2save=self.data2save.replace("\r\r","\r") 
+        self.data2save=self.data2save.replace("\n\n","\n") 
         try:
-            with open(self.dataTargetFile, 'w', encoding='utf-8') as f:
+            with open(self.dataTargetFile, 'w', encoding=sys.getdefaultencoding()) as f:
                 f.write(self.data2save)
-            self.dataTargetFile=self.dataResourceFile+"-resault-GBK.csv"
-            with open(self.dataTargetFile, 'w', encoding='GBK') as f:
-                f.write(self.data2save)
+            # self.dataTargetFile=self.dataResourceFile+"-resault-GBK.csv"
+            # with open(self.dataTargetFile, 'w', encoding='GBK') as f:
+            #     f.write(self.data2save)
         except Exception as e2:
             print(e2)
         finally:
