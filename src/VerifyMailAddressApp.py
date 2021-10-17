@@ -322,7 +322,7 @@ class MailVerifier():
             dataline="%s,%s,%s,%s,%s,%s"%(str(currentId),address.replace(",","，"),addresscheckmsg.replace(",","，"),mxcheckmsg.replace(",","，"),validatecheckmsg.replace(",","，"),errmsg.replace(",","，"))
             # print(dataline)
             self.data2save=self.data2save+dataline+os.linesep
-        self.data2save=self.data2save.replace("\r\r\n",+os.linesep)
+        self.data2save=self.data2save.replace("\r\r\n",os.linesep)
         self.data2save=self.data2save.replace("\r\r","\r") 
         self.data2save=self.data2save.replace("\n\n","\n") 
         try:
