@@ -47,21 +47,11 @@ class MailVerifier():
         start=time.time()
         self.readDataFile()
         self.decodeDataFile()     
-
-        self.checkMailAddresses()
-        
-
+        self.checkMailAddresses()    
         self.checkMailDomains()
-        
-
-        self.checkMailAddressValidates()        
-        
-
-
-
+        self.checkMailAddressValidates()
         self.genDataResault()        
         self.saveDataFile()
-        
 
     def readDataFile(self):
         print("ready to read data file:[%s]"%(self.dataResourceFile))
@@ -138,7 +128,7 @@ class MailVerifier():
             self.data[address]["AddressCheck"]=None
             self.data[address]["MXCheck"]=None
             self.data[address]["Validate"]=None
-            
+            self.data[address]["ErrMSG"]=""
         return
 
     def checkMailAddresses(self):
@@ -166,6 +156,7 @@ class MailVerifier():
             addressToVerify = str(address).lower()
             match = re.match('^[_a-z0-9-]+(\.[_a-z0-9-]+)*@[a-z0-9-]+(\.[a-z0-9-]+)*(\.[a-z]{2,4})$', addressToVerify) 
             if match == None: 
+                self.data[address]["ErrMSG"]=str(self.data[address]["ErrMSG"]+"  "+"checkMailAddress falid:Bad Syntax in[%s]"%(address)).replace(",","，")
                 print("checkMailAddress falid:Bad Syntax in[%s]"%(address))
                 self.data[address]["AddressCheck"]="checkMailAddress falid:Bad Syntax in[%s]"%(address)
             else:
@@ -203,7 +194,7 @@ class MailVerifier():
 
     def checkMailDomain(self,address):
         try:
-             
+            domain_name = address.split('@')[1]              
             if self.data[address]["domain"] in self.checkedDomain:
                 self.data[address]["MXCheck"]=True
                 return self.mxcache[self.data[address]["domain"]]
@@ -213,9 +204,9 @@ class MailVerifier():
             if not self.data[address]["AddressCheck"]:
                 self.data[address]["MXCheck"]=False
                 return False
-            self.data[address]["MXCheck"]=self.data[address]["Validate"]=validate_email(address,check_mx=True,verify=False,debug=True,smtp_timeout=30)
+            self.data[address]["MXCheck"]=validate_email(address,check_mx=True,verify=False,debug=True,smtp_timeout=30)
+            print("address[%s]MX record[%s]"%(address,self.data[address]["MXCheck"]))
             # mxRecord=""
-            domain_name = address.split('@')[1] 
             # if domain_name in self.mxcache.keys():
             #     return self.mxcache[domain_name]
             # records = dns.resolver.resolve(domain_name, 'MX') 
@@ -226,12 +217,17 @@ class MailVerifier():
                 self.checkedDomain.append(domain_name)
                 if address in self.checkedFaildDomain:
                     self.checkedFaildDomain.remove(address)
-            elif self.data[address]["MXCheck"]==False:
+            elif self.data[address]["MXCheck"]==None:
                 self.checkedFaildDomain.append(domain_name)
                 if address in self.checkedDomain:
                     self.checkedDomain.remove(address)
             # self.data[address]["MXCheck"]=True
             # self.data[address]["mxRecord"]=mxRecord
+            else:
+                if address in self.checkedFaildDomain:
+                    self.checkedFaildDomain.remove(address)
+                if address in self.checkedDomain:
+                    self.checkedDomain.remove(address)
         except Exception as e:
             # if "The DNS response does not contain an answer to the question" in str(e) or "None of DNS query names exist" in str(e):
             #     mxRecord=None
@@ -244,6 +240,8 @@ class MailVerifier():
             #     self.data[address]["MXCheck"]=None
             #     self.data[address]["mxRecord"]=None
             #     return False
+            self.data[address]["MXCheck"]=None
+            self.data[address]["ErrMSG"]=str(self.data[address]["ErrMSG"]+"  "+str(e)).replace(",","，")
             print(str(e))
         finally:
             try:
@@ -263,6 +261,7 @@ class MailVerifier():
             except Exception as e2:
                 print("err at scanalldata creat threads maxthread:[%s]"%(self.checkValidateThreadMax))
                 print(e2)
+                self.data[address]["ErrMSG"]=str(self.data[address]["ErrMSG"]+"  "+str(e2)).replace(",","，")
                 pass
         for i in (0,self.checkValidateMaxThreadNum):
             self.checkValidateThreadMax.acquire()
@@ -274,10 +273,10 @@ class MailVerifier():
 
     def checkMailAddressValidate(self,address):
         try:
-            self.data[address]["Validate"]=validate_email(address,check_mx=False,verify=True,debug=True,smtp_timeout=30)
-            time.sleep(1)
+            self.data[address]["Validate"]=validate_email(address,check_mx=True,verify=True,debug=True,smtp_timeout=30)
         except Exception as e:
             print(e)
+            self.data[address]["ErrMSG"]=str(self.data[address]["ErrMSG"]+"  "+str(e)).replace(",","，")
         finally:
             try:
                 self.checkValidateThreadMax.release()
@@ -292,9 +291,51 @@ class MailVerifier():
         return
 
     def saveDataFile(self):
+        self.dataTargetFile=self.dataResourceFile+"-resault-utf-8.csv"
+        self.data2save=""
+        currentId=0
+        firstLineData="Id,Mail_Address,Address_Check,MX_Check,Validate_Check,ErrMSG"
+        # print(firstLineData)
+        self.data2save=self.data2save+firstLineData+os.linesep
         for address in self.data:
-            print("address[%s]adcheck[%s]mxcheck[%s]validatecheck[%s]"%(address,self.data[address]["AddressCheck"],self.data[address]["MXCheck"],self.data[address]["Validate"]))
-
+            currentId=currentId+1
+            addresscheckmsg=""
+            if self.data[address]["AddressCheck"]:
+                addresscheckmsg="邮件地址正常"
+            else:
+                addresscheckmsg="邮件地址不合法"
+            mxcheckmsg=""
+            if self.data[address]["MXCheck"]:
+                mxcheckmsg="MX解析正常"
+            else:
+                mxcheckmsg="MX地址不存在"
+            validatecheckmsg=""
+            if self.data[address]["Validate"]:
+                validatecheckmsg="地址认证正常"
+            else:
+                validatecheckmsg="邮件地址不存在"
+            errmsg=self.data[address]["ErrMSG"]
+            if errmsg=="":
+                errmsg="-"
+            else:
+                errmsg=errmsg.replace(",","，")
+            dataline="%s,%s,%s,%s,%s,%s"%(str(currentId),address.replace(",","，"),addresscheckmsg.replace(",","，"),mxcheckmsg.replace(",","，"),validatecheckmsg.replace(",","，"),errmsg.replace(",","，"))
+            # print(dataline)
+            self.data2save=self.data2save+dataline+os.linesep
+        self.data2save=self.data2save.replace(os.linesep+os.linesep,os.linesep).replace("\r\r","\r").replace("\n\n","\n")        
+        try:
+            with open(self.dataTargetFile, 'w', encoding='utf-8') as f:
+                f.write(self.data2save)
+            self.dataTargetFile=self.dataResourceFile+"-resault-GBK.csv"
+            with open(self.dataTargetFile, 'w', encoding='GBK') as f:
+                f.write(self.data2save)
+        except Exception as e2:
+            print(e2)
+        finally:
+            try:
+                f.close()
+            except:
+                pass
         return
     
 if __name__ == "__main__":
