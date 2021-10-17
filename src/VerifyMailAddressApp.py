@@ -6,15 +6,14 @@
 import os
 import sys
 import time
+import datetime
+import pytz
 import threading
 import copy
+import re
 import tkinter.filedialog as tkFileDialog
 from validate_email import validate_email
-import smtplib
-import dns.resolver
-import socket
-import re
-
+import DNS
 
 class MailVerifier():
     def __init__(self):
@@ -37,24 +36,32 @@ class MailVerifier():
         self.dnsThreadNum=4  #default 4
         self.checkMailMaxThreadNum=10
         self.checkDomainMaxThreadNum=10  #default 10 MaxThread
+        self.checkValidateMaxThreadNum=2
+        self.checkMailAddressThreadMax= threading.BoundedSemaphore(self.checkMailMaxThreadNum)
+        self.checkDomainThreadMax= threading.BoundedSemaphore(self.checkDomainMaxThreadNum)
+        self.checkValidateThreadMax = threading.BoundedSemaphore(self.checkValidateMaxThreadNum)
         self.mxcache={}
     
     def loadVerifier(self):
         print("system ready!")
+        start=time.time()
         self.readDataFile()
-        time.sleep(5)
-        self.decodeDataFile()
-        time.sleep(5)
+        self.decodeDataFile()     
+
         self.checkMailAddresses()
-        time.sleep(5)
+        
+
         self.checkMailDomains()
-        time.sleep(5)
-        self.checkMailAddressValidate()
-        time.sleep(5)
-        self.genDataResault()
-        time.sleep(5)
+        
+
+        self.checkMailAddressValidates()        
+        
+
+
+
+        self.genDataResault()        
         self.saveDataFile()
-        time.sleep(5)
+        
 
     def readDataFile(self):
         print("ready to read data file:[%s]"%(self.dataResourceFile))
@@ -115,38 +122,44 @@ class MailVerifier():
         self.mailAddress=list(copy.deepcopy(dataline))
  
         time.sleep
-        print("success read file:[%s],d atanum:[%s]"%(self.dataResourceFile,len(self.mailAddress)))
+        print("success read file:[%s],datanum:[%s]"%(self.dataResourceFile,len(self.mailAddress)))
         return
 
     def decodeDataFile(self):
-        for aaddress in self.mailAddress:
-            print("add:[%s]"%(aaddress))
-            hostname = aaddress[aaddress.find('@') + 1:]
-            username = aaddress[:aaddress.find('@') - 1]
+        for address in self.mailAddress:
+            print("add:[%s]"%(address))
+            hostname = address[address.find('@') + 1:]
+            username = address[:address.find('@') - 1]
             self.domains.append(hostname)
-            self.data[aaddress]={}
-            self.data[aaddress]["domain"]=hostname
-            self.data[aaddress]["username"]=username
-            self.data[aaddress]["address"]=aaddress
-            self.data[aaddress]["AddressCheck"]=None
-            self.data[aaddress]["MXCheck"]=None
-            self.data[aaddress]["Validate"]=None
+            self.data[address]={}
+            self.data[address]["domain"]=hostname
+            self.data[address]["username"]=username
+            self.data[address]["address"]=address
+            self.data[address]["AddressCheck"]=None
+            self.data[address]["MXCheck"]=None
+            self.data[address]["Validate"]=None
             
         return
 
     def checkMailAddresses(self):
-        print("checkMailAddress successed")
+        print("checkMailAddresses start>>>%.2f"%time.time())
+        start=time.time()
         for address in self.mailAddress:
-            self.checkMailAddressThreadMax = threading.BoundedSemaphore(self.checkMailMaxThreadNum)
+            self.checkMailAddressThreadMax.acquire()
             try:
-                self.checkMailAddressThreadMax.acquire()
                 scanThread = threading.Thread(target=self.checkMailAddress,args=(copy.deepcopy(address),),)
                 scanThread.start()
             except Exception as e2:
                 print("err at scanalldata creat threads maxthread:[%s]"%(self.checkMailMaxThreadNum))
                 print(e2)
                 pass
-        return
+        for i in (0,self.checkMailMaxThreadNum):
+            self.checkMailAddressThreadMax.acquire()
+        print("[%s]checkMailAddresses check finished at [%.2f]"%(str(datetime.datetime.fromtimestamp(int(time.time()), pytz.timezone('Asia/Shanghai')).strftime('%Y-%m-%d %H:%M:%S')),time.time()-start))
+        for i in (0,self.checkMailMaxThreadNum):
+            self.checkMailAddressThreadMax.release()
+        print("checkMailAddresses end<<<%.2f"%time.time())
+
     
     def checkMailAddress(self,address):
         try:
@@ -163,12 +176,15 @@ class MailVerifier():
             print(e)
             self.data[address]["AddressCheck"]=str(e).replace(",","，")
         finally:
-            self.checkMailAddressThreadMax.release()
+            try:
+                self.checkMailAddressThreadMax.release()
+            except Exception as e2:
+                return
 
     def checkMailDomains(self):
         print("checkMailDomain start>>>")
+        start=time.time()
         for address in self.mailAddress:
-            self.checkDomainThreadMax = threading.BoundedSemaphore(self.checkDomainMaxThreadNum)
             try:
                 self.checkDomainThreadMax.acquire()
                 checkDomainThread = threading.Thread(target=self.checkMailDomain,args=(copy.deepcopy(address),),)
@@ -177,11 +193,17 @@ class MailVerifier():
                 print("err at scanalldata creat threads maxthread:[%s]"%(self.checkDomainThreadMax))
                 print(e2)
                 pass
+        for i in (0,self.checkDomainMaxThreadNum):
+            self.checkDomainThreadMax.acquire()
+        print("[%s]checkMailDomains check finished at [%.2f]"%(str(datetime.datetime.fromtimestamp(int(time.time()), pytz.timezone('Asia/Shanghai')).strftime('%Y-%m-%d %H:%M:%S')),time.time()-start))
+        for i in (0,self.checkDomainMaxThreadNum):
+            self.checkDomainThreadMax.release()
         print("checkMailDomain end<<<")
-        return
+         
 
     def checkMailDomain(self,address):
         try:
+             
             if self.data[address]["domain"] in self.checkedDomain:
                 self.data[address]["MXCheck"]=True
                 return self.mxcache[self.data[address]["domain"]]
@@ -191,33 +213,77 @@ class MailVerifier():
             if not self.data[address]["AddressCheck"]:
                 self.data[address]["MXCheck"]=False
                 return False
-            mxRecord=""
+            self.data[address]["MXCheck"]=self.data[address]["Validate"]=validate_email(address,check_mx=True,verify=False,debug=True,smtp_timeout=30)
+            # mxRecord=""
             domain_name = address.split('@')[1] 
-            if domain_name in self.mxcache.keys():
-                return self.mxcache[domain_name]
-            records = dns.resolver.query(domain_name, 'MX') 
-            mxRecord = records[0].exchange 
-            mxRecord = str(mxRecord) 
-            self.mxcache[domain_name]=mxRecord
-            self.checkedDomain.append(domain_name)
-            self.data[address]["MXCheck"]=True
-            return mxRecord
-        except Exception as e:
-            if "The DNS response does not contain an answer to the question" in str(e) or "None of DNS query names exist" in str(e):
-                mxRecord=None
-                self.mxcache[domain_name]=mxRecord
+            # if domain_name in self.mxcache.keys():
+            #     return self.mxcache[domain_name]
+            # records = dns.resolver.resolve(domain_name, 'MX') 
+            # mxRecord = records[0].exchange 
+            # mxRecord = str(mxRecord) 
+            # self.mxcache[domain_name]=mxRecord
+            if self.data[address]["MXCheck"]==True:
+                self.checkedDomain.append(domain_name)
+                if address in self.checkedFaildDomain:
+                    self.checkedFaildDomain.remove(address)
+            elif self.data[address]["MXCheck"]==False:
                 self.checkedFaildDomain.append(domain_name)
-                self.data[address]["MXCheck"]=False
-            print("checkMailMxRecorderr:%s,%s"%(address,str(e)))
-            if "timed out" in str(e):
-                self.data[address]["MXCheck"]=None
-                return False
+                if address in self.checkedDomain:
+                    self.checkedDomain.remove(address)
+            # self.data[address]["MXCheck"]=True
+            # self.data[address]["mxRecord"]=mxRecord
+        except Exception as e:
+            # if "The DNS response does not contain an answer to the question" in str(e) or "None of DNS query names exist" in str(e):
+            #     mxRecord=None
+            #     self.mxcache[domain_name]=mxRecord
+            #     self.checkedFaildDomain.append(domain_name)
+            #     self.data[address]["mxRecord"]=None
+            #     self.data[address]["MXCheck"]=False
+            # print("checkMailMxRecorderr:%s,%s"%(address,str(e)))
+            # if "timed out" in str(e):
+            #     self.data[address]["MXCheck"]=None
+            #     self.data[address]["mxRecord"]=None
+            #     return False
             print(str(e))
         finally:
-            self.checkDomainThreadMax.release()
+            try:
+                self.checkDomainThreadMax.release()
+            except Exception as e2:
+                return False
+            
+
+    def checkMailAddressValidates(self):
+        print("checkMailAddressValidates start>>>")
+        start=time.time()
+        for address in self.mailAddress:
+            self.checkValidateThreadMax.acquire()
+            try:
+                checkDomainThread = threading.Thread(target=self.checkMailAddressValidate,args=(copy.deepcopy(address),),)
+                checkDomainThread.start()
+            except Exception as e2:
+                print("err at scanalldata creat threads maxthread:[%s]"%(self.checkValidateThreadMax))
+                print(e2)
+                pass
+        for i in (0,self.checkValidateMaxThreadNum):
+            self.checkValidateThreadMax.acquire()
+        print("[%s]checkMailAddressValidates check finished at [%.2f]"%(str(datetime.datetime.fromtimestamp(int(time.time()), pytz.timezone('Asia/Shanghai')).strftime('%Y-%m-%d %H:%M:%S')),time.time()-start))
+        for i in (0,self.checkValidateMaxThreadNum):
+            self.checkValidateThreadMax.release()
+        print("checkMailAddressValidates end<<<")
+        return True
 
     def checkMailAddressValidate(self,address):
-        return True
+        try:
+            self.data[address]["Validate"]=validate_email(address,check_mx=False,verify=True,debug=True,smtp_timeout=30)
+            time.sleep(1)
+        except Exception as e:
+            print(e)
+        finally:
+            try:
+                self.checkValidateThreadMax.release()
+            except Exception as e2:
+                return False
+
 
     def sendTestMail(self,mail):
         return True
@@ -226,6 +292,9 @@ class MailVerifier():
         return
 
     def saveDataFile(self):
+        for address in self.data:
+            print("address[%s]adcheck[%s]mxcheck[%s]validatecheck[%s]"%(address,self.data[address]["AddressCheck"],self.data[address]["MXCheck"],self.data[address]["Validate"]))
+
         return
     
 if __name__ == "__main__":
