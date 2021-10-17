@@ -13,7 +13,7 @@ import copy
 import re
 import tkinter.filedialog as tkFileDialog
 from validate_email import validate_email
-import DNS
+from tkinter import *
 
 class MailVerifier():
     def __init__(self):
@@ -52,6 +52,7 @@ class MailVerifier():
         self.checkMailAddressValidates()
         self.genDataResault()        
         self.saveDataFile()
+        self.openTargetPath()
 
     def readDataFile(self):
         print("ready to read data file:[%s]"%(self.dataResourceFile))
@@ -59,6 +60,8 @@ class MailVerifier():
             print("data file not exists:[%s]"%(self.dataResourceFile))
         print("waitting user choice a csv file to verity mail address")
         try:
+            root = Tk()    # 创建一个Tkinter.Tk()实例
+            root.withdraw()   
             file_path = tkFileDialog.askopenfilename(title=u'请选择解析文件', filetypes=(
             ("Csv Files", "*.csv"), ("all files", "*.*")))
             if file_path == None:
@@ -274,8 +277,10 @@ class MailVerifier():
     def checkMailAddressValidate(self,address):
         try:
             self.data[address]["Validate"]=validate_email(address,check_mx=True,verify=True,debug=True,smtp_timeout=30)
+            print("[%s]Validate[%s]"%(address,self.data[address]["Validate"]))
         except Exception as e:
             print(e)
+            print("[%s]Validate[%s]err[%s]"%(address,self.data[address]["Validate"],str(e)))
             self.data[address]["ErrMSG"]=str(self.data[address]["ErrMSG"]+"  "+str(e)).replace(",","，")
         finally:
             try:
@@ -292,11 +297,13 @@ class MailVerifier():
 
     def saveDataFile(self):
         self.dataTargetFile=self.dataResourceFile+"-resault.csv"
+        if os.path.exists(self.dataTargetFile):
+            self.dataTargetFile=self.dataResourceFile+"[%s]-resault.csv"%str(datetime.datetime.fromtimestamp(int(time.time()), pytz.timezone('Asia/Shanghai')).strftime('%Y-%m-%d--%H-%M-%S'))
         self.data2save=""
         currentId=0
-        firstLineData="Id,Mail_Address,Address_Check,MX_Check,Validate_Check,ErrMSG"
+        firstLineData="Id,Mail_Address,Address_Check,MX_Check,Validate_Check,ErrMSG"+'\n'
         # print(firstLineData)
-        self.data2save=self.data2save+firstLineData+os.linesep
+        self.data2save=self.data2save+firstLineData
         for address in self.data:
             currentId=currentId+1
             addresscheckmsg=""
@@ -318,28 +325,36 @@ class MailVerifier():
             if errmsg=="":
                 errmsg="-"
             else:
-                errmsg=errmsg.replace(",","，")
-            dataline="%s,%s,%s,%s,%s,%s"%(str(currentId),address.replace(",","，"),addresscheckmsg.replace(",","，"),mxcheckmsg.replace(",","，"),validatecheckmsg.replace(",","，"),errmsg.replace(",","，"))
+                errmsg=errmsg.replace(",","，").replace("\r","").replace("\n","") 
+            dataline="%s,%s,%s,%s,%s,%s"%(str(currentId),address.replace(",","，"),addresscheckmsg.replace(",","，"),mxcheckmsg.replace(",","，"),validatecheckmsg.replace(",","，"),errmsg.replace(",","，"))+'\n'
             # print(dataline)
-            self.data2save=self.data2save+dataline+os.linesep
-        self.data2save=self.data2save.replace("\r\r\n",os.linesep)
-        self.data2save=self.data2save.replace("\r\r","\r") 
-        self.data2save=self.data2save.replace("\n\n","\n") 
+            self.data2save=self.data2save+dataline
+ 
         try:
             with open(self.dataTargetFile, 'w', encoding=sys.getdefaultencoding()) as f:
                 f.write(self.data2save)
-            # self.dataTargetFile=self.dataResourceFile+"-resault-GBK.csv"
-            # with open(self.dataTargetFile, 'w', encoding='GBK') as f:
-            #     f.write(self.data2save)
+            self.dataTargetFile=self.dataTargetFile+"-GBK.csv"
+            with open(self.dataTargetFile, 'w', encoding='GBK') as f2:
+                f2.write(self.data2save)
         except Exception as e2:
             print(e2)
         finally:
             try:
                 f.close()
+                f2.close()
             except:
                 pass
         return
     
+    def openTargetPath(self):
+        os.system('explorer.exe %s'%self.dataTargetFile)
+            
+
+
 if __name__ == "__main__":
     mailchecker=MailVerifier()
     mailchecker.loadVerifier()
+    print("System Finished! Going down in 5 sec,Thanks for using")
+    time.sleep(5)
+
+
