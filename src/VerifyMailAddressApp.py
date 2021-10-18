@@ -1,7 +1,5 @@
 #!/usr/bin/python
 # -*- coding: UTF-8 -*-
-# by WangZhen<wangzhenjjcn@gmail.com>
-# from 2021-10-17 All Rights Reserved By Myazure.org Code on https://github.com/wangzhenjjcn/VerifyMailAddress
 
 import os
 import sys
@@ -14,6 +12,9 @@ import re
 import tkinter.filedialog as tkFileDialog
 from validate_email import validate_email
 from tkinter import *
+
+# by WangZhen<wangzhenjjcn@gmail.com>
+# from 2021-10-17 All Rights Reserved By Myazure.org Code on https://github.com/wangzhenjjcn/VerifyMailAddress
 
 class MailVerifier():
     def __init__(self):
@@ -347,7 +348,7 @@ class MailVerifier():
         return
     
     def openTargetPath(self):
-        os.system('explorer.exe %s'%self.dataTargetFile)
+        os.system('start %s'%self.dataTargetFile)
             
 
 
@@ -356,5 +357,6 @@ if __name__ == "__main__":
     mailchecker.loadVerifier()
     print("System Finished! Going down in 5 sec,Thanks for using")
     time.sleep(5)
+    sys.exit(9)
 
 
